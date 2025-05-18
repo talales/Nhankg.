@@ -49,7 +49,7 @@ coroutine.wrap(function()
         wait(199)
         game.ReplicatedStorage.GameData.LatestRoom.Changed:Wait()
         wait(0)
-loadstring(game:HttpGet("https://raw.githubusercontent.com/bre29be3/Doors-Modes/refs/heads/main/Hunger"))()
+https://raw.githubusercontent.com/bre29be3/Doors-Modes/refs/heads/main/Hunger
 
 end
 
@@ -66,14 +66,3 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Darker-TheDarkestGuy/
 end
 
 end)()
--- Shocker
-coroutine.wrap(function()
-    while true do
-        wait(10)
-        game.ReplicatedStorage.GameData.LatestRoom.Changed:Wait()
-        wait(0)
-loadstring(game:HttpGet("https://raw.githubusercontent.com/vct0721/Doors-Stuff/refs/heads/main/Entities/Shocker"))()
-
-end
-
-end()
