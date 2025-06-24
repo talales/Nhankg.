@@ -1,0 +1,268 @@
+-- Tải Entity Spawner V2
+local spawner = loadstring(game:HttpGet("https://raw.githubusercontent.com/RegularVynixu/Utilities/main/Doors/Entity%20Spawner/V2/Source.lua"))()
+
+-- Tạo thực thể Ripper
+local entity = spawner.Create({
+    Entity = {
+        Name = "Ripper",
+        Asset = "rbxassetid://118750853123155",
+        HeightOffset = 0
+    },
+    Lights = {
+        Flicker = { Enabled = false, Duration = 1 },
+        Shatter = true,
+        Repair = false
+    },
+    Earthquake = { Enabled = true },
+    CameraShake = {
+        Enabled = true,
+        Range = 100,
+        Values = {1.5, 20, 0.1, 1}
+    },
+    Movement = { Speed = 185, Delay = 0, Reversed = false },
+    Rebounding = { Enabled = false },
+    Damage = { Enabled = true, Range = 40, Amount = 125 },
+    Crucifixion = { Enabled = true, Range = 40, Resist = false, Break = true },
+    Death = {
+        Type = "Guiding",
+        Hints = {"You die to Ripper", "HE is crazy", "IF you see room to red and hear a scream", "Hide now he is move"},
+        Cause = "Ripper"
+    }
+})
+
+-- Services và biến toàn cục
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Debris = game:GetService("Debris")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local isJumpscareActive = false
+local entityModel_Global, entityPart_Global
+local cameraConn, inputConn1, inputConn2, anchorConn, particleFreezeConn
+local originalTintColor, originalContrast
+local originalParticleRates = {}
+local activeSounds = {}
+
+-- 🔊 Hàm phát 3 tiếng đập cửa mỗi 1 giây
+local function playDoorKnocks()
+    for i = 1, 3 do
+        local knock = Instance.new("Sound", workspace)
+        knock.SoundId = "rbxassetid://1837829565"
+        knock.Volume = 10
+        knock:Play()
+        Debris:AddItem(knock, 5)
+        task.wait(1)
+    end
+end
+
+-- Đóng băng và khôi phục Particle
+local function freezeParticles()
+    for _, p in ipairs(workspace:GetDescendants()) do
+        if p:IsA("ParticleEmitter") and p.Enabled and p.Rate > 0 then
+            originalParticleRates[p] = p.Rate
+            p.Rate = 0
+            p.Enabled = false
+        end
+    end
+end
+
+local function unfreezeParticles()
+    for p, r in pairs(originalParticleRates) do
+        if p and p.Parent then
+            p.Rate = r
+            p.Enabled = true
+        end
+    end
+    originalParticleRates = {}
+end
+
+-- Hàm jumpscare chính
+local function executeRealJumpscare()
+    if inputConn1 then inputConn1:Disconnect() end
+    if inputConn2 then inputConn2:Disconnect() end
+
+    local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+    gui.IgnoreGuiInset = true
+
+    local img = Instance.new("ImageLabel", gui)
+    img.Size = UDim2.new(1, 0, 1, 0)
+    img.BackgroundTransparency = 1
+    img.ImageTransparency = 1
+    img.Image = "rbxassetid://11826279208"
+    img.ZIndex = 10
+
+    local sound = Instance.new("Sound", workspace)
+    sound.SoundId = "rbxassetid://6567183465"
+    sound.Volume = 3
+    sound:Play()
+    table.insert(activeSounds, sound)
+
+    TweenService:Create(img, TweenInfo.new(0.1), {ImageTransparency = 0}):Play()
+    Lighting.MainColorCorrection.TintColor = Color3.fromRGB(250, 0, 0)
+    Lighting.MainColorCorrection.Contrast = 10
+    TweenService:Create(Lighting.MainColorCorrection, TweenInfo.new(0.25), {Contrast = 0}):Play()
+    TweenService:Create(Lighting.MainColorCorrection, TweenInfo.new(0.5), {TintColor = originalTintColor}):Play()
+
+    task.wait(1.5)
+
+    img.ImageTransparency = 1
+    img.Image = "rbxassetid://131248740447285"
+    img.ZIndex = 12
+    TweenService:Create(img, TweenInfo.new(0.5), {ImageTransparency = 0}):Play()
+
+    local skullSound = Instance.new("Sound", workspace)
+    skullSound.SoundId = "rbxassetid://10483837590"
+    skullSound.Volume = 2
+    skullSound:Play()
+    table.insert(activeSounds, skullSound)
+
+    task.wait(2)
+
+    TweenService:Create(img, TweenInfo.new(0.5), {ImageTransparency = 1}):Play().Completed:Wait()
+
+    -- 🔊 Thêm tiếng đập cửa sau jumpscare
+    playDoorKnocks()
+
+    if cameraConn then cameraConn:Disconnect() end
+    if anchorConn then anchorConn:Disconnect() end
+    if particleFreezeConn then particleFreezeConn:Disconnect() end
+
+    Camera.CameraType = Enum.CameraType.Custom
+    isJumpscareActive = false
+    gui:Destroy()
+
+    for _, s in ipairs(activeSounds) do if s and s:IsA("Sound") then s:Destroy() end end
+    activeSounds = {}
+    unfreezeParticles()
+
+    if entityModel_Global then entityModel_Global:Destroy() end
+    entityModel_Global = nil
+    entityPart_Global = nil
+
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then
+            hum.WalkSpeed = 16
+            hum.JumpPower = 50
+            hum.PlatformStand = false
+            hum.AutoRotate = true
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.Anchored = false end
+            end
+        end
+    end
+end
+
+-- Gọi jumpscare
+local function doJumpscareWithEffect()
+    if isJumpscareActive then return end
+    isJumpscareActive = true
+
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum then
+            hum.WalkSpeed = 0
+            hum.JumpPower = 0
+            hum.PlatformStand = true
+            hum.AutoRotate = false
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.Anchored = true end
+            end
+        end
+    end
+
+    Camera.CameraType = Enum.CameraType.Scriptable
+    cameraConn = RunService.RenderStepped:Connect(function()
+        if LocalPlayer.Character and entityPart_Global then
+            Camera.CFrame = CFrame.new(LocalPlayer.Character.Head.Position, entityPart_Global.Position)
+        end
+    end)
+
+    anchorConn = RunService.Heartbeat:Connect(function()
+        if entityModel_Global then
+            for _, part in ipairs(entityModel_Global:GetDescendants()) do
+                if part:IsA("BasePart") then part.Anchored = true end
+            end
+        end
+    end)
+
+    freezeParticles()
+
+    inputConn1 = UserInputService.InputBegan:Connect(function() return Enum.ContextActionResult.Sink end)
+    inputConn2 = UserInputService.InputChanged:Connect(function() return Enum.ContextActionResult.Sink end)
+
+    local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
+    gui.IgnoreGuiInset = true
+
+    local img = Instance.new("ImageLabel", gui)
+    img.Size = UDim2.new(1, 0, 1, 0)
+    img.BackgroundTransparency = 1
+    img.Image = "rbxassetid://1568285513"
+    img.ZIndex = 11
+
+    local static = Instance.new("Sound", workspace)
+    static.SoundId = "rbxassetid://1845110821"
+    static.Looped = true
+    static.Volume = 1
+    static:Play()
+    table.insert(activeSounds, static)
+
+    TweenService:Create(Lighting, TweenInfo.new(0.5), {Brightness = -1}):Play()
+    task.wait(1.5)
+    gui:Destroy()
+    static:Destroy()
+    TweenService:Create(Lighting, TweenInfo.new(0.5), {Brightness = 1}):Play()
+
+    executeRealJumpscare()
+end
+
+-- Gắn callback cho thực thể
+entity:SetCallback("OnSpawned", function()
+    local s = Instance.new("Sound", workspace)
+    s.SoundId = "rbxassetid://9125713501"
+    s.Volume = 10
+    s.PlaybackSpeed = 0.525
+    s:Play()
+    Debris:AddItem(s, 5)
+
+    originalTintColor = Lighting.MainColorCorrection.TintColor
+    originalContrast = Lighting.MainColorCorrection.Contrast
+
+    Lighting.MainColorCorrection.TintColor = Color3.fromRGB(255,255,255)
+    Lighting.MainColorCorrection.Contrast = 10
+    TweenService:Create(Lighting.MainColorCorrection, TweenInfo.new(2.5), {Contrast = 0}):Play()
+    TweenService:Create(Lighting.MainColorCorrection, TweenInfo.new(5), {TintColor = Color3.fromRGB(250, 0, 0)}):Play()
+
+    entityModel_Global = entity.Model
+    entityPart_Global = entityModel_Global and entityModel_Global.PrimaryPart or nil
+end)
+
+entity:SetCallback("OnDespawned", function()
+    if entityModel_Global then
+        entityModel_Global:Destroy()
+        entityModel_Global = nil
+        entityPart_Global = nil
+    end
+
+    -- 🔊 Phát tiếng đập cửa khi despawn tự nhiên
+    playDoorKnocks()
+
+    TweenService:Create(Lighting.MainColorCorrection, TweenInfo.new(2.5), {Contrast = originalContrast}):Play()
+    TweenService:Create(Lighting.MainColorCorrection, TweenInfo.new(5), {TintColor = originalTintColor}):Play()
+end)
+
+entity:SetCallback("OnDamagePlayer", function(hp)
+    if hp <= 0 then
+        doJumpscareWithEffect()
+    end
+end)
+
+-- Bắt đầu chạy thực thể
+entity:Run()
